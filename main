@@ -1,0 +1,59 @@
+import cv2
+import numpy as np
+import imutils
+import easyocr
+import pytesseract
+
+pytesseract.pytesseract.tesseract_cmd = r'C:/Program Files/Tesseract-OCR/tesseract.exe'
+
+
+def plate_recognition(img_filename):
+    # 1.Read in Image, Grayscale and Blur
+    img = cv2.imread(img_filename)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # 2. Apply filter and find edges for localization
+    kernel = np.ones((1, 1), np.uint8)
+    dilated = cv2.dilate(gray, kernel, iterations=1)
+
+    bfilter = cv2.bilateralFilter(dilated, 11, 17, 17)  # Noise reduction
+    edged = cv2.Canny(bfilter, 30, 200)  # Edge detection
+
+    # 3. Find Contours and Apply Mask
+    keypoints = cv2.findContours(edged.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    contours = imutils.grab_contours(keypoints)
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:10]
+
+    plate_location = None
+    for contour in contours:
+        plate_axis = cv2.approxPolyDP(contour, 10, True)
+        if len(plate_axis) == 4:
+            plate_location = plate_axis
+            break
+
+    mask = np.zeros(gray.shape, np.uint8)
+    cv2.drawContours(mask, [plate_location], 0, 255, -1)
+
+    (x, y) = np.where(mask == 255)
+    (x1, y1) = (np.min(x), np.min(y))
+    (x2, y2) = (np.max(x), np.max(y))
+    cropped_image = gray[x1:x2 + 2, y1:y2 + 2]
+
+    cropped_image = cv2.resize(cropped_image, (cropped_image.shape[1] * 4, cropped_image.shape[0] * 4),
+                               interpolation=cv2.INTER_CUBIC)
+
+    # 4. Use Easy OCR To Read Text
+    reader = easyocr.Reader(['en'])
+    result = reader.readtext(cropped_image)
+
+    # 5. Render Result
+    text = result[0][-2]
+    text = ''.join(e for e in text if e.isalnum())
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    res = cv2.putText(img, text=text, org=(plate_axis[0][0][0] - 50, plate_axis[1][0][1] + 60), fontFace=font,
+                      fontScale=1,
+                      color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
+    res = cv2.rectangle(img, tuple(plate_axis[0][0]), tuple(plate_axis[2][0]), (0, 255, 0), 3)
+
+    return res
