@@ -1,3 +1,4 @@
+# Project description
 Code Description: License Plate Recognition
 
 This code implements a license plate recognition system using computer vision techniques, OpenCV for image analysis and contour detection, OCR for text extraction.
